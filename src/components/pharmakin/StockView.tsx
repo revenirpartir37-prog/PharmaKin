@@ -162,7 +162,7 @@ export function StockView({ onChanged }: StockViewProps) {
       {/* Dialogs */}
       {dialog && (
         <StockDialog
-          mode={dialog.mode}
+          mode={dialog.mode as Exclude<DialogMode, null>}
           product={dialog.product}
           products={products}
           onClose={() => setDialog(null)}

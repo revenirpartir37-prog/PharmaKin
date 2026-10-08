@@ -186,9 +186,45 @@ Work Log:
   because their API only supports XOF/EUR/USD, but our UI is consistently CDF.
 
 Stage Summary:
-- Subscription system complete: 5000 CDF weekly via GeniusPay Mobile Money,
-  recharge code via .env, 7-day access window, automatic expiration bounce.
+- Historical implementation only; this GeniusPay/recharge-code flow was
+  replaced by the manual M-Pesa review flow documented below.
+
+---
+Task ID: SUB-2
+Task: Replace hosted payments with manual M-Pesa review
+
+Current subscription workflow (replaces the older SUB-1 payment flow):
+- M-Pesa transfers are submitted with a JPG/PNG/WebP receipt image.
+- Receipt submissions are stored with `pending_review` status; sellers retain
+  access while the administration reviews the payment.
+- At initial signup only, a configured validation code can activate seven days
+  immediately; renewal requires an M-Pesa receipt and administrator decision.
+- The administrator reviews receipts from the hidden three-star entry point,
+  approves or rejects with a reason, and sees approved subscription revenue
+  by pharmacy and in total.
+- The seller app refreshes review status periodically and displays pending or
+  rejected-payment notices. A rejected, expired account is redirected after a
+  five-second notice; approval activates the seven-day subscription.
+- The admin dashboard shows unpaid, pending, active, and soon-to-expire access,
+  can grant free weeks to one or more pharmacies, and can send in-app messages
+  to all pharmacies or a selected group.
+- GeniusPay endpoints and the former recharge-code endpoint have been removed.
+- The signup validation code and local administrator credentials are configured
+  in the ignored `.env`; keep that file private. `.env.example` lists variable
+  names and placeholders only.
 - Lint: 0 errors. Dev server: no runtime errors.
-- All .env values are user-editable: change PHARMAKIN_RECHARGE_CODE to set
-  your own recharge code; change PHARMAKIN_SUBSCRIPTION_PRICE to change
-  the price; switch GENIUSPAY_API_KEY/SECRET to pk_live_/sk_live_ for prod.
+
+---
+Task ID: SUB-2
+Task: Replace hosted checkout with manual M-Pesa subscription payments
+
+Current implementation:
+- Registration opens the subscription page with the M-Pesa payment instructions.
+- Sellers can open Paramètres > Abonnement to see remaining access and renew.
+- Payments are sent manually to the configured M-Pesa recipient; the app does
+  not claim to verify transfers automatically. Pharmacies upload a receipt for
+  administrator review; a rejection reason is shown to the pharmacy.
+- The configured code is limited to initial signup; renewals use only the
+  M-Pesa receipt review workflow.
+- Admin sign-in uses PHARMAKIN_ADMIN_PASSWORD and
+  PHARMAKIN_ADMIN_SESSION_SECRET from the ignored local `.env`.

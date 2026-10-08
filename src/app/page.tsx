@@ -1,21 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Star } from 'lucide-react'
 import { Home } from '@/components/pharmakin/Home'
 import { SellerOnboarding } from '@/components/pharmakin/SellerOnboarding'
 import { SellerApp } from '@/components/pharmakin/SellerApp'
 import { ClientView } from '@/components/pharmakin/ClientView'
 import { PaywallView } from '@/components/pharmakin/PaywallView'
+import { AdminDashboard } from '@/components/pharmakin/AdminDashboard'
 import { StickyFooter } from '@/components/pharmakin/StickyFooter'
 import { useAppStore } from '@/lib/store'
 import type { PharmacyDTO, SellerDTO } from '@/lib/types'
 
-type View = 'home' | 'onboarding' | 'paywall' | 'seller' | 'client'
-
-interface PendingRedirect {
-  status: 'success' | 'error'
-  reference: string
-}
+type View = 'home' | 'onboarding' | 'paywall' | 'seller' | 'client' | 'admin'
 
 export default function Page() {
   const {
@@ -25,7 +22,9 @@ export default function Page() {
   } = useAppStore()
   const [hydrated, setHydrated] = useState(false)
   const [view, setView] = useState<View>('home')
-  const [pendingRedirect, setPendingRedirect] = useState<PendingRedirect | null>(null)
+  const [paywallReturnToSeller, setPaywallReturnToSeller] = useState(false)
+  const starClicks = useRef(0)
+  const starResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Wait for zustand persist to rehydrate (avoids SSR/CSR mismatch)
   useEffect(() => {
@@ -38,44 +37,32 @@ export default function Page() {
     }
   }, [])
 
-  // Detect GeniusPay redirect (?payment=success|error) on mount.
-  // We strip the query afterwards so a refresh doesn't re-trigger.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const status = params.get('payment')
-    const reference = params.get('reference')
-    if ((status === 'success' || status === 'error') && reference) {
-      // Defer the setState to a microtask to avoid the synchronous
-      // set-state-in-effect lint rule.
-      Promise.resolve().then(() => setPendingRedirect({ status, reference }))
-      // Clean the URL
-      const cleanUrl = window.location.pathname
-      window.history.replaceState({}, '', cleanUrl)
-    }
-  }, [])
-
-  // If a GeniusPay redirect was detected and there's no persisted pharmacy yet,
-  // we can't show the paywall (no pharmacy context). We'll surface the pending
-  // reference once the user re-enters the paywall view.
-  useEffect(() => {
-    if (pendingRedirect && persistedPharmacy && view !== 'paywall') {
-      // Defer to a microtask to avoid the synchronous-setState-in-effect lint rule.
-      Promise.resolve().then(() => setView('paywall'))
-    }
-  }, [pendingRedirect, persistedPharmacy?.id, view])
-
   const goHome = useCallback(() => {
     setView('home')
-    setPendingRedirect(null)
   }, [])
   const goToSeller = useCallback(() => {
     setView('seller')
-    // Clear any pending GeniusPay redirect so the effect that auto-bounces
-    // to the paywall doesn't loop back after a successful activation.
-    setPendingRedirect(null)
   }, [])
-  const goToPaywall = useCallback(() => setView('paywall'), [])
+  const goToPaywall = useCallback(() => {
+    setPaywallReturnToSeller(false)
+    setView('paywall')
+  }, [])
+  const goToSubscription = useCallback(() => {
+    setPaywallReturnToSeller(true)
+    setView('paywall')
+  }, [])
+  const handleAdminStar = useCallback(() => {
+    starClicks.current += 1
+    if (starResetTimer.current) clearTimeout(starResetTimer.current)
+    if (starClicks.current >= 3) {
+      starClicks.current = 0
+      setView('admin')
+      return
+    }
+    starResetTimer.current = setTimeout(() => {
+      starClicks.current = 0
+    }, 1200)
+  }, [])
 
   if (!hydrated) {
     return (
@@ -113,8 +100,7 @@ export default function Page() {
                 },
                 sellers.map((s) => ({ id: s.id, pharmacyId: s.pharmacyId, name: s.name, isPrimary: s.isPrimary })),
               )
-              // After onboarding, send to the paywall — pharmacy must pay
-              // 5000 CDF before getting access.
+              setPaywallReturnToSeller(false)
               setView('paywall')
             }}
           />
@@ -124,11 +110,8 @@ export default function Page() {
           <PaywallView
             pharmacyId={persistedPharmacy.id}
             pharmacyName={persistedPharmacy.name}
-            customerPhone={persistedPharmacy.phone ?? undefined}
-            onBack={goHome}
-            onActivated={goToSeller}
-            pendingReference={pendingRedirect?.reference}
-            pendingStatus={pendingRedirect?.status}
+            onBack={paywallReturnToSeller ? goToSeller : goHome}
+            onPaymentSubmitted={goToSeller}
           />
         )}
 
@@ -136,15 +119,29 @@ export default function Page() {
           <SellerApp
             onExit={goHome}
             onSubscriptionExpired={goToPaywall}
+            onManageSubscription={goToSubscription}
           />
         )}
 
         {view === 'client' && <ClientView onBack={goHome} />}
+        {view === 'admin' && <AdminDashboard onExit={goHome} />}
       </main>
+
+      {view !== 'admin' && (
+        <button
+          type="button"
+          onClick={handleAdminStar}
+          className="fixed bottom-2 right-2 z-50 flex h-7 w-7 items-center justify-center rounded-full bg-background/70 text-[11px] opacity-35 transition-opacity hover:opacity-100"
+          aria-label="Accès administrateur"
+          title="Accès administrateur"
+        >
+          <Star size={13} />
+        </button>
+      )}
 
       {/* Sticky footer shown on all non-seller views. The seller app has
           its own fixed bottom navigation that would overlap with this. */}
-      {view !== 'seller' && <StickyFooter />}
+      {view !== 'seller' && view !== 'admin' && <StickyFooter />}
     </div>
   )
 }

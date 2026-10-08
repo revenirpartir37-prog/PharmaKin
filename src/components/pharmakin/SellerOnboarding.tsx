@@ -92,7 +92,7 @@ export function SellerOnboarding({ onBack, onDone }: OnboardingProps) {
         <PharmaKinLogo size={40} />
         <div>
           <h1 className="text-xl font-extrabold tracking-tight">Configuration initiale</h1>
-          <p className="text-xs text-muted-foreground">Quelques informations et vous commencez</p>
+          <p className="text-xs text-muted-foreground">Créez votre espace, puis activez-le par M-Pesa</p>
         </div>
       </div>
 
@@ -220,7 +220,7 @@ export function SellerOnboarding({ onBack, onDone }: OnboardingProps) {
                 <Loader2 size={20} className="animate-spin" />
               ) : (
                 <>
-                  Commencer maintenant
+                  Continuer vers le paiement M-Pesa
                   <ArrowRight size={18} />
                 </>
               )}

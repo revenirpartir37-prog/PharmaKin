@@ -32,14 +32,42 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   })
 
+  const paymentReview = await db.subscription.findFirst({
+    where: { pharmacyId, status: { in: ['pending_review', 'rejected'] } },
+    orderBy: { updatedAt: 'desc' },
+    select: { status: true, reviewMessage: true, updatedAt: true },
+  })
+  const latestPaymentReview =
+    paymentReview?.status === 'rejected' &&
+    active &&
+    active.updatedAt >= paymentReview.updatedAt
+      ? null
+      : paymentReview
+
   const daysRemaining = active?.endDate
     ? Math.max(0, Math.ceil((active.endDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
     : 0
 
+  const safeSubscription = (subscription: typeof active | typeof lastSub) =>
+    subscription
+      ? {
+          status: subscription.status,
+          amount: subscription.amount,
+          currency: subscription.currency,
+          durationDays: subscription.durationDays,
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+          paymentMethod: subscription.paymentMethod,
+          createdAt: subscription.createdAt,
+        }
+      : null
+
   return NextResponse.json({
     active: !!active,
-    subscription: active,
+    accessAllowed: !!active || latestPaymentReview?.status === 'pending_review',
+    subscription: safeSubscription(active),
     daysRemaining,
-    lastSubscription: lastSub,
+    lastSubscription: safeSubscription(lastSub),
+    paymentReview: latestPaymentReview,
   })
 }

@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const revenue = todaySales.reduce((s, x) => s + x.total, 0)
   const itemsSold = todaySales.reduce((s, x) => s + x.itemCount, 0)
 
-  let openSession = null
+  let openSession: Awaited<ReturnType<typeof db.serviceSession.findFirst>> = null
   if (sellerId) {
     openSession = await db.serviceSession.findFirst({
       where: { pharmacyId, sellerId, open: true },

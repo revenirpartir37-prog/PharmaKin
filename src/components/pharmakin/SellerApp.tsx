@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Home as HomeIcon,
@@ -13,6 +13,8 @@ import {
   ArrowLeft,
   CalendarClock,
   Loader2,
+  Settings,
+  Smartphone,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppStore } from '@/lib/store'
@@ -25,11 +27,18 @@ import { ReportView } from './ReportView'
 import { InvoiceView } from './InvoiceView'
 import type { SaleDTO } from '@/lib/types'
 
-export type SellerTab = 'home' | 'sell' | 'stock' | 'activity' | 'reports'
+export type SellerTab = 'home' | 'sell' | 'stock' | 'activity' | 'reports' | 'settings'
+
+interface SellerNotification {
+  id: string
+  title: string
+  message: string
+}
 
 interface SellerAppProps {
   onExit: () => void
   onSubscriptionExpired?: () => void
+  onManageSubscription?: () => void
 }
 
 /**
@@ -38,43 +47,119 @@ interface SellerAppProps {
  * Otherwise show dashboard + bottom nav + tab views.
  * "Vendre" tab opens the SalesView which can navigate to InvoiceView after checkout.
  */
-export function SellerApp({ onExit, onSubscriptionExpired }: SellerAppProps) {
+export function SellerApp({
+  onExit,
+  onSubscriptionExpired,
+  onManageSubscription,
+}: SellerAppProps) {
   const { pharmacy, sellers, activeSellerId, setActiveSeller, clearPharmacy } = useAppStore()
   const [tab, setTab] = useState<SellerTab>('home')
   const [view, setView] = useState<'tab' | 'invoice'>('tab')
   const [lastInvoice, setLastInvoice] = useState<SaleDTO | null>(null)
   const [sessionVersion, setSessionVersion] = useState(0) // bump to refresh dashboard
-  const [subCheck, setSubCheck] = useState<'loading' | 'active' | 'expired'>('loading')
+  const [subCheck, setSubCheck] = useState<'loading' | 'active' | 'pending' | 'rejected' | 'expired'>('loading')
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null)
+  const [subscriptionEndDate, setSubscriptionEndDate] = useState<string | null>(null)
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null)
+  const [rejectionSeconds, setRejectionSeconds] = useState(5)
+  const [notifications, setNotifications] = useState<SellerNotification[]>([])
+  const redirectedToPayment = useRef(false)
 
-  // Check subscription status on mount and on pharmacy change.
-  // If expired, redirect to the paywall.
   useEffect(() => {
     if (!pharmacy) return
     let cancelled = false
-    ;(async () => {
+    let redirectTimer: number | undefined
+    let notificationErrorShown = false
+    const checkStatus = async () => {
       try {
         const res = await fetch(`/api/subscription/status?pharmacyId=${pharmacy.id}`)
         const data = await res.json()
         if (cancelled) return
-        if (data.active) {
-          setSubCheck('active')
+        if (data.accessAllowed) {
+          redirectedToPayment.current = false
+          setSubCheck(data.active ? 'active' : 'pending')
           setDaysRemaining(data.daysRemaining ?? 0)
+          setSubscriptionEndDate(data.subscription?.endDate ?? null)
+          setReviewMessage(data.paymentReview?.reviewMessage ?? null)
         } else {
-          setSubCheck('expired')
-          // Defer to allow the toast / state to settle
-          setTimeout(() => {
-            if (onSubscriptionExpired) onSubscriptionExpired()
-          }, 100)
+          setDaysRemaining(0)
+          setSubscriptionEndDate(null)
+          setReviewMessage(data.paymentReview?.reviewMessage ?? null)
+          if (data.paymentReview?.status === 'rejected') {
+            setSubCheck('rejected')
+          } else {
+            setSubCheck('expired')
+          }
+          if (!data.paymentReview?.status || data.paymentReview.status !== 'rejected') {
+            if (redirectedToPayment.current) return
+            redirectedToPayment.current = true
+            redirectTimer = window.setTimeout(() => {
+              if (!cancelled) onSubscriptionExpired?.()
+            }, 100)
+          }
         }
       } catch {
         if (!cancelled) setSubCheck('active') // be permissive on network error
       }
-    })()
+    }
+    const checkNotifications = async () => {
+      try {
+        const response = await fetch(`/api/pharmacy/${pharmacy.id}/notifications`)
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || 'Impossible de charger les notifications')
+        if (!cancelled) {
+          setNotifications(data.notifications ?? [])
+          notificationErrorShown = false
+        }
+      } catch (error) {
+        if (!cancelled && !notificationErrorShown) {
+          notificationErrorShown = true
+          toast.error(error instanceof Error ? error.message : 'Impossible de charger les notifications')
+        }
+      }
+    }
+    void checkStatus()
+    void checkNotifications()
+    const timer = window.setInterval(() => {
+      void checkStatus()
+      void checkNotifications()
+    }, 20000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
+      if (redirectTimer !== undefined) window.clearTimeout(redirectTimer)
     }
   }, [pharmacy?.id, onSubscriptionExpired])
+
+  useEffect(() => {
+    if (subCheck !== 'rejected') return
+    const countdown = window.setInterval(() => {
+      setRejectionSeconds((seconds) => Math.max(0, seconds - 1))
+    }, 1000)
+    const redirect = window.setTimeout(() => onSubscriptionExpired?.(), 5000)
+    return () => {
+      window.clearInterval(countdown)
+      window.clearTimeout(redirect)
+    }
+  }, [subCheck, onSubscriptionExpired])
+
+  async function dismissNotification(notificationId: string) {
+    if (!pharmacy) return
+    try {
+      const response = await fetch(`/api/pharmacy/${pharmacy.id}/notifications`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notificationId }),
+      })
+      if (!response.ok && response.status !== 404) {
+        const result = await response.json()
+        throw new Error(result.error || 'Impossible de fermer la notification')
+      }
+      setNotifications((current) => current.filter((notification) => notification.id !== notificationId))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossible de fermer la notification')
+    }
+  }
 
   // If no pharmacy at all (shouldn't happen here) bail out
   if (!pharmacy) {
@@ -103,11 +188,28 @@ export function SellerApp({ onExit, onSubscriptionExpired }: SellerAppProps) {
     )
   }
 
+  if (subCheck === 'rejected') {
+    return (
+      <div className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-3xl flex-col items-center justify-center px-5">
+        <div className="w-full max-w-md rounded-3xl border border-red-300 bg-red-50 p-6 text-center text-red-950 shadow-sm" role="alert">
+          <h1 className="text-xl font-extrabold">Paiement refusé</h1>
+          <p className="mt-2 text-sm leading-relaxed">{reviewMessage || 'La capture du paiement n’a pas été validée.'}</p>
+          <p className="mt-4 text-sm font-bold">
+            Fermeture de l’espace vendeur dans {rejectionSeconds} seconde{rejectionSeconds > 1 ? 's' : ''}…
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   // Seller picker screen
   if (!activeSellerId) {
     return (
       <SellerPicker
         sellers={sellers}
+        reviewPending={subCheck === 'pending'}
+        notifications={notifications}
+        onDismissNotification={(id) => void dismissNotification(id)}
         onPick={async (sellerId) => {
           setActiveSeller(sellerId)
           // Start a new service session
@@ -210,6 +312,20 @@ export function SellerApp({ onExit, onSubscriptionExpired }: SellerAppProps) {
             </button>
           </div>
         </div>
+        <NotificationList
+          notifications={notifications}
+          onDismiss={(id) => void dismissNotification(id)}
+        />
+        {subCheck === 'pending' && (
+          <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950" role="status">
+            <strong>Validation du paiement en cours.</strong> PharmaKin reste accessible pendant la vérification de votre capture.
+          </div>
+        )}
+        {reviewMessage && subCheck === 'active' && (
+          <div className="mt-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-950" role="alert">
+            <strong>Un paiement a été refusé.</strong> {reviewMessage}
+          </div>
+        )}
       </header>
 
       {/* Content */}
@@ -232,7 +348,11 @@ export function SellerApp({ onExit, onSubscriptionExpired }: SellerAppProps) {
               >
                 <ArrowLeft size={16} /> Retour au tableau de bord
               </button>
-              <InvoiceView sale={lastInvoice} pharmacy={pharmacy} seller={activeSeller} />
+              <InvoiceView
+                sale={lastInvoice}
+                pharmacy={pharmacy}
+                seller={{ ...activeSeller, pharmacyId: pharmacy.id }}
+              />
             </motion.div>
           ) : (
             <motion.div
@@ -264,6 +384,14 @@ export function SellerApp({ onExit, onSubscriptionExpired }: SellerAppProps) {
               {tab === 'stock' && <StockView onChanged={() => setSessionVersion((v) => v + 1)} />}
               {tab === 'activity' && <ActivityView />}
               {tab === 'reports' && <ReportView />}
+              {tab === 'settings' && (
+                <SellerSettings
+                  pharmacyName={pharmacy.name}
+                  daysRemaining={daysRemaining ?? 0}
+                  subscriptionEndDate={subscriptionEndDate}
+                  onManageSubscription={onManageSubscription}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -277,12 +405,72 @@ export function SellerApp({ onExit, onSubscriptionExpired }: SellerAppProps) {
           <TabButton active={tab === 'stock' && view === 'tab'} onClick={() => { setView('tab'); setTab('stock') }} icon={<Boxes size={20} />} label="Stock" />
           <TabButton active={tab === 'activity' && view === 'tab'} onClick={() => { setView('tab'); setTab('activity') }} icon={<ActivityIcon size={20} />} label="Activité" />
           <TabButton active={tab === 'reports' && view === 'tab'} onClick={() => { setView('tab'); setTab('reports') }} icon={<FileText size={20} />} label="Rapports" />
+          <TabButton active={tab === 'settings' && view === 'tab'} onClick={() => { setView('tab'); setTab('settings') }} icon={<Settings size={20} />} label="Paramètres" />
         </div>
         <div className="border-t border-border/50 px-4 py-1 text-center text-[10px] text-muted-foreground">
           Créé par <strong className="font-semibold text-foreground">HenoBuild Entreprise</strong> · PharmaKin
         </div>
       </nav>
     </div>
+  )
+}
+
+function SellerSettings({
+  pharmacyName,
+  daysRemaining,
+  subscriptionEndDate,
+  onManageSubscription,
+}: {
+  pharmacyName: string
+  daysRemaining: number
+  subscriptionEndDate: string | null
+  onManageSubscription?: () => void
+}) {
+  const expiryDate = subscriptionEndDate
+    ? new Date(subscriptionEndDate).toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : null
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight">Paramètres</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{pharmacyName}</p>
+      </div>
+      <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <CalendarClock size={22} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold">Abonnement PharmaKin</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {daysRemaining > 0
+                ? `Actif · ${daysRemaining} jour${daysRemaining > 1 ? 's' : ''} restant${daysRemaining > 1 ? 's' : ''}`
+                : 'Expiré · un renouvellement est nécessaire'}
+            </p>
+            {expiryDate && (
+              <p className="mt-1 text-xs text-muted-foreground">Expire le {expiryDate}</p>
+            )}
+          </div>
+        </div>
+        <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-relaxed text-emerald-950">
+          Renouvelez pour <strong>5 000 FC / 7 jours</strong> avec M-Pesa Vodacom. Vous trouverez le numéro à copier et les étapes de paiement sur la page de renouvellement.
+        </div>
+        {onManageSubscription && (
+          <button
+            onClick={onManageSubscription}
+            className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          >
+            <Smartphone size={18} />
+            Payer / renouveler avec M-Pesa
+          </button>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -325,10 +513,16 @@ function TabButton({
 
 function SellerPicker({
   sellers,
+  reviewPending,
+  notifications,
+  onDismissNotification,
   onPick,
   onExit,
 }: {
   sellers: { id: string; name: string; isPrimary: boolean }[]
+  reviewPending: boolean
+  notifications: SellerNotification[]
+  onDismissNotification: (id: string) => void
   onPick: (id: string) => void
   onExit: () => void
 }) {
@@ -336,6 +530,15 @@ function SellerPicker({
   return (
     <div className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-xl flex-col items-center justify-center px-4 py-8">
       <PharmaKinWordmark size={40} />
+      {reviewPending && (
+        <div className="mt-5 w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950" role="status">
+          <strong>Validation du paiement en cours.</strong> L’espace vendeur est disponible pendant l’examen.
+        </div>
+      )}
+      <NotificationList
+        notifications={notifications}
+        onDismiss={onDismissNotification}
+      />
       <h1 className="mt-6 text-2xl font-extrabold tracking-tight">Qui commence ?</h1>
       <p className="mt-1 text-sm text-muted-foreground text-center">
         {pharmacy?.name} — Sélectionnez votre profil pour démarrer votre service
@@ -368,6 +571,39 @@ function SellerPicker({
       >
         <ArrowLeft size={16} /> Retour à laccueil
       </button>
+    </div>
+  )
+}
+
+function NotificationList({
+  notifications,
+  onDismiss,
+}: {
+  notifications: SellerNotification[]
+  onDismiss: (id: string) => void
+}) {
+  if (notifications.length === 0) return null
+  return (
+    <div className="space-y-2">
+      {notifications.map((notification) => (
+        <article
+          key={notification.id}
+          className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-left text-sm"
+          role="status"
+        >
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold">{notification.title}</h2>
+            <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{notification.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onDismiss(notification.id)}
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+          >
+            Lu
+          </button>
+        </article>
+      ))}
     </div>
   )
 }

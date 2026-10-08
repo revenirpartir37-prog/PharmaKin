@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Pharmacy {
@@ -19,6 +20,7 @@ model Pharmacy {
   longitude Float?
   currency  String   @default("FC") // FC or USD
   invoiceSeq Int     @default(1) // for HK-XXXXXX numbering
+  signupCodeUsedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -29,6 +31,7 @@ model Pharmacy {
   activities Activity[]
   sessions ServiceSession[]
   subscriptions Subscription[]
+  notifications PharmacyNotification[]
 }
 
 model Subscription {
@@ -40,11 +43,13 @@ model Subscription {
   durationDays Int      @default(7)
   startDate    DateTime?
   endDate     DateTime?
-  paymentMethod String? // geniuspay | recharge_code
-  paymentRef   String?  // reference GeniusPay (MTX-...) ou code utilisé
-  checkoutUrl  String?  // URL de checkout GeniusPay (pour reprise)
+  paymentMethod String? // manual_code | manual_mpesa | admin_grant
+  paymentRef   String?  // reference de transaction, jamais le code de réabonnement
+  checkoutUrl  String?  // URL de paiement externe éventuelle
   customerPhone String?
   note         String?
+  screenshotData String? // capture du reçu M-Pesa en base64
+  reviewMessage String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -53,6 +58,19 @@ model Subscription {
   @@index([pharmacyId])
   @@index([status])
   @@index([endDate])
+}
+
+model PharmacyNotification {
+  id        String    @id @default(cuid())
+  pharmacyId String
+  title     String
+  message   String
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId, createdAt])
 }
 
 model Seller {

@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    let activity = null
+    let activity: Awaited<ReturnType<typeof db.activity.create>> | null = null
     if (sellerId) {
       activity = await db.activity.create({
         data: {
