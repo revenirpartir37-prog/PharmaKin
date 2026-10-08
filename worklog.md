@@ -115,3 +115,80 @@ Stage Summary:
     pharmacies sorted by distance, nearest highlighted, pharmacy
     sheet with route/call/OSM link all functional.
 - Lint: 0 errors, 0 warnings. Dev server: no runtime errors.
+
+---
+Task ID: SUB-1
+Agent: main
+Task: Add GeniusPay subscription payment system (5000 CDF / 7 days)
+
+Work Log:
+- Read GeniusPay API docs (POST /payments + GET /payments/{reference})
+- Added env vars to .env:
+  * GENIUSPAY_API_KEY / GENIUSPAY_API_SECRET (sandbox keys)
+  * GENIUSPAY_API_URL
+  * PHARMAKIN_SUBSCRIPTION_PRICE=5000
+  * PHARMAKIN_SUBSCRIPTION_DURATION_DAYS=7
+  * PHARMAKIN_CURRENCY=CDF
+  * PHARMAKIN_RECHARGE_CODE=PHARMAKIN-2024 (user-editable)
+  * APP_BASE_URL
+- Added Subscription model to Prisma schema (pharmacyId, status, amount,
+  currency, durationDays, startDate, endDate, paymentMethod, paymentRef,
+  checkoutUrl, customerPhone) + indexes; pushed to DB.
+- src/lib/geniuspay.ts: server-side client (server-only import)
+  * initiatePayment({ amount, description, customer, successUrl, errorUrl,
+    metadata }) -> POST /payments with currency fallback (CDF first, then
+    default XOF). Returns checkout_url for hosted GeniusPay page.
+  * getPaymentStatus(reference) -> GET /payments/{reference}
+  * appBaseUrl(requestOrigin) -> derives absolute base URL for redirect URLs
+- API routes:
+  * POST /api/subscription/initiate — creates pending Subscription, calls
+    GeniusPay, returns checkoutUrl. Auto-redirect if already active.
+  * POST /api/subscription/verify — looks up Subscription by reference,
+    calls GeniusPay to confirm, activates 7-day window on 'completed'.
+  * POST /api/subscription/recharge — compares submitted code against
+    PHARMAKIN_RECHARGE_CODE env var; on match, creates active 7-day
+    Subscription with paymentMethod=recharge_code.
+  * GET /api/subscription/status — marks expired rows, returns active
+    subscription + daysRemaining for the pharmacy.
+  * POST /api/subscription/webhook — GeniusPay server-to-server callback
+    (always returns 200 to avoid retries).
+- PaywallView component (mobile-first, big green pay button):
+  * Hero card with 5 000 CDF / CDF / "par semaine · 7 jours d'accès"
+  * Features list (5 items with checkmarks)
+  * "Payer 5 000 CDF — Mobile Money" -> initiates GeniusPay payment ->
+    redirects to checkout_url
+  * "J'ai un code de réabonnement" expandable -> /api/subscription/recharge
+  * Auto-verifies on GeniusPay redirect (?payment=success&reference=MTX-...)
+  * Success screen "Abonnement activé !" + auto-redirect to seller picker
+  * Ref-guard prevents duplicate verify calls; stable onActivated callback
+- page.tsx wiring:
+  * New 'paywall' view; onboarding completion now goes to paywall (no access
+    before payment).
+  * Detects GeniusPay redirect on mount, sets pendingRedirect, cleans URL.
+  * goToSeller / goHome clear pendingRedirect (avoids bounce-back loop).
+- SellerApp subscription gate:
+  * On mount, GET /api/subscription/status. If expired -> onSubscriptionExpired
+    -> bounces to paywall. While loading, shows "Vérification de
+    l'abonnement…" loader.
+  * Header shows colored days-remaining badge: green (>3j), amber (<=3j),
+    red (<=1j).
+- Verified end-to-end with Agent Browser:
+  * Onboarding -> paywall shown (no active sub)
+  * Recharge code PHARMAKIN-2024 -> "Abonnement activé" -> seller picker
+  * Payer 5 000 CDF -> redirect to geniuspay.ci/checkout/SANDBOX_... ->
+    simulate "Paiement Réussi" -> Terminer -> back to PharmaKin ->
+    "Paiement confirmé ! Abonnement activé pour 7 jours." -> auto-redirect
+    to seller picker -> dashboard with "7j" badge in header
+  * Expiring subscription (DB endDate in past) -> reload -> bounce to
+    paywall automatically.
+- Currency: UI always displays "5 000 CDF" (Franc Congolais, never XOF/FCFA)
+  as the user requested. GeniusPay's hosted checkout page may show "XOF"
+  because their API only supports XOF/EUR/USD, but our UI is consistently CDF.
+
+Stage Summary:
+- Subscription system complete: 5000 CDF weekly via GeniusPay Mobile Money,
+  recharge code via .env, 7-day access window, automatic expiration bounce.
+- Lint: 0 errors. Dev server: no runtime errors.
+- All .env values are user-editable: change PHARMAKIN_RECHARGE_CODE to set
+  your own recharge code; change PHARMAKIN_SUBSCRIPTION_PRICE to change
+  the price; switch GENIUSPAY_API_KEY/SECRET to pk_live_/sk_live_ for prod.

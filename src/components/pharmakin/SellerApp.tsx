@@ -11,6 +11,8 @@ import {
   LogOut,
   Power,
   ArrowLeft,
+  CalendarClock,
+  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppStore } from '@/lib/store'
@@ -27,6 +29,7 @@ export type SellerTab = 'home' | 'sell' | 'stock' | 'activity' | 'reports'
 
 interface SellerAppProps {
   onExit: () => void
+  onSubscriptionExpired?: () => void
 }
 
 /**
@@ -35,16 +38,69 @@ interface SellerAppProps {
  * Otherwise show dashboard + bottom nav + tab views.
  * "Vendre" tab opens the SalesView which can navigate to InvoiceView after checkout.
  */
-export function SellerApp({ onExit }: SellerAppProps) {
+export function SellerApp({ onExit, onSubscriptionExpired }: SellerAppProps) {
   const { pharmacy, sellers, activeSellerId, setActiveSeller, clearPharmacy } = useAppStore()
   const [tab, setTab] = useState<SellerTab>('home')
   const [view, setView] = useState<'tab' | 'invoice'>('tab')
   const [lastInvoice, setLastInvoice] = useState<SaleDTO | null>(null)
   const [sessionVersion, setSessionVersion] = useState(0) // bump to refresh dashboard
+  const [subCheck, setSubCheck] = useState<'loading' | 'active' | 'expired'>('loading')
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null)
+
+  // Check subscription status on mount and on pharmacy change.
+  // If expired, redirect to the paywall.
+  useEffect(() => {
+    if (!pharmacy) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/subscription/status?pharmacyId=${pharmacy.id}`)
+        const data = await res.json()
+        if (cancelled) return
+        if (data.active) {
+          setSubCheck('active')
+          setDaysRemaining(data.daysRemaining ?? 0)
+        } else {
+          setSubCheck('expired')
+          // Defer to allow the toast / state to settle
+          setTimeout(() => {
+            if (onSubscriptionExpired) onSubscriptionExpired()
+          }, 100)
+        }
+      } catch {
+        if (!cancelled) setSubCheck('active') // be permissive on network error
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [pharmacy?.id, onSubscriptionExpired])
 
   // If no pharmacy at all (shouldn't happen here) bail out
   if (!pharmacy) {
     return null
+  }
+
+  // While checking subscription, show a small loader (avoids a flash of
+  // the seller app or picker before being bounced to the paywall).
+  if (subCheck === 'loading') {
+    return (
+      <div className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-3xl flex-col items-center justify-center px-4">
+        <Loader2 className="animate-spin text-primary" size={32} />
+        <p className="mt-3 text-sm text-muted-foreground">Vérification de l'abonnement…</p>
+      </div>
+    )
+  }
+
+  // Subscription expired — we should not even render the picker. The effect
+  // above will call onSubscriptionExpired; render a tiny placeholder.
+  if (subCheck === 'expired') {
+    return (
+      <div className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-3xl flex-col items-center justify-center px-4">
+        <Loader2 className="animate-spin text-primary" size={32} />
+        <p className="mt-3 text-sm text-muted-foreground">Redirection vers le paiement…</p>
+      </div>
+    )
   }
 
   // Seller picker screen
@@ -114,6 +170,21 @@ export function SellerApp({ onExit }: SellerAppProps) {
             <span className="hidden rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary sm:inline">
               {pharmacy.name}
             </span>
+            {/* Subscription badge */}
+            {subCheck === 'active' && daysRemaining != null && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                  daysRemaining <= 1
+                    ? 'bg-red-100 text-red-700'
+                    : daysRemaining <= 3
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-emerald-100 text-emerald-700'
+                }`}
+                title={`Abonnement actif — ${daysRemaining} jour(s) restant(s)`}
+              >
+                <CalendarClock size={12} /> {daysRemaining}j
+              </span>
+            )}
             <button
               onClick={() => {
                 if (confirm('Terminer votre service et changer de vendeur ?')) {
