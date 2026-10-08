@@ -1,5 +1,16 @@
-const CACHE_NAME = 'pharmakin-shell-v1'
-const SHELL = ['/', '/manifest.webmanifest', '/logo.svg', '/pharmakin-icon.svg']
+const CACHE_NAME = 'pharmakin-shell-v2'
+const SHELL = [
+  '/',
+  '/manifest.webmanifest',
+  '/pharmakin-logo.png',
+  '/favicon-16x16.png',
+  '/favicon-32x32.png',
+  '/apple-touch-icon.png',
+  '/icon-192.png',
+  '/icon-192-maskable.png',
+  '/icon-512.png',
+  '/icon-512-maskable.png',
+]
 const DB_NAME = 'pharmakin-offline'
 
 self.addEventListener('install', (event) => {

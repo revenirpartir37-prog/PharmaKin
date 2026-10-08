@@ -1,10 +1,7 @@
 'use client'
 
-import { Pill } from 'lucide-react'
+import Image from 'next/image'
 
-/**
- * Small PharmaKin brand mark (cross + pill) used in headers.
- */
 export function PharmaKinLogo({
   size = 32,
   className = '',
@@ -13,13 +10,14 @@ export function PharmaKinLogo({
   className?: string
 }) {
   return (
-    <div
-      className={`inline-flex items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm ${className}`}
-      style={{ width: size, height: size }}
+    <Image
+      src="/icon-512.png"
+      alt=""
       aria-hidden
-    >
-      <Pill size={size * 0.55} strokeWidth={2.4} />
-    </div>
+      width={size}
+      height={size}
+      className={`rounded-xl shadow-sm ${className}`}
+    />
   )
 }
 
