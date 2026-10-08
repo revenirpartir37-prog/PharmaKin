@@ -14,12 +14,31 @@ interface OnboardingProps {
   onDone: (pharmacy: PharmacyDTO, sellers: SellerDTO[]) => void
 }
 
+function PasswordField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-semibold text-foreground">{label}</span>
+      <input
+        type="password"
+        autoComplete="new-password"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        minLength={10}
+        maxLength={128}
+        className="w-full rounded-2xl border border-input bg-background px-4 py-3.5 text-base outline-none ring-offset-2 transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
+      />
+    </label>
+  )
+}
+
 type Mode = 'alone' | 'two'
 
 export function SellerOnboarding({ onBack, onDone }: OnboardingProps) {
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0)
   const [pharmacyName, setPharmacyName] = useState('')
   const [sellerName, setSellerName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [phone, setPhone] = useState('')
   const [mode, setMode] = useState<Mode | null>(null)
   const [secondSeller, setSecondSeller] = useState('')
@@ -63,6 +82,8 @@ export function SellerOnboarding({ onBack, onDone }: OnboardingProps) {
           latitude: location?.lat ?? null,
           longitude: location?.lng ?? null,
           sellerName: sellerName.trim(),
+          email: email.trim(),
+          password,
           secondSellerName: mode === 'two' ? secondSeller.trim() : undefined,
         }),
       })
@@ -201,6 +222,8 @@ export function SellerOnboarding({ onBack, onDone }: OnboardingProps) {
                 autoFocus
               />
             )}
+            <Field label="E-mail de connexion" placeholder="vous@exemple.com" value={email} onChange={setEmail} />
+            <PasswordField label="Mot de passe (10 caractères minimum)" value={password} onChange={setPassword} />
             <div className="rounded-2xl border border-border bg-muted/30 p-4 text-sm">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Récapitulatif
@@ -208,12 +231,13 @@ export function SellerOnboarding({ onBack, onDone }: OnboardingProps) {
               <Row label="Pharmacie" value={pharmacyName} />
               <Row label="Vendeur principal" value={sellerName} />
               {mode === 'two' && secondSeller && <Row label="Deuxième vendeur" value={secondSeller} />}
+              <Row label="E-mail du compte" value={email.trim()} />
               <Row label="Organisation" value={mode === 'two' ? 'Deux vendeurs' : 'Seul'} />
               {location && <Row label="Position" value="Captée" />}
             </div>
             <button
               onClick={submit}
-              disabled={submitting || (mode === 'two' && !secondSeller.trim())}
+              disabled={submitting || (mode === 'two' && !secondSeller.trim()) || !email.trim() || password.length < 10}
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-4 text-base font-bold text-primary-foreground shadow-md transition-transform active:scale-[0.98] disabled:opacity-50"
             >
               {submitting ? (

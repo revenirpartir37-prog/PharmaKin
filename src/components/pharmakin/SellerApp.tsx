@@ -15,6 +15,7 @@ import {
   Loader2,
   Settings,
   Smartphone,
+  Bell,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppStore } from '@/lib/store'
@@ -63,6 +64,7 @@ export function SellerApp({
   const [reviewMessage, setReviewMessage] = useState<string | null>(null)
   const [rejectionSeconds, setRejectionSeconds] = useState(5)
   const [notifications, setNotifications] = useState<SellerNotification[]>([])
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const redirectedToPayment = useRef(false)
 
   useEffect(() => {
@@ -75,6 +77,13 @@ export function SellerApp({
         const res = await fetch(`/api/subscription/status?pharmacyId=${pharmacy.id}`)
         const data = await res.json()
         if (cancelled) return
+        if (res.status === 401 || res.status === 403) {
+          clearPharmacy()
+          onExit()
+          toast.error(data.error || 'Votre accès vendeur a été suspendu ou a expiré.')
+          return
+        }
+        if (!res.ok) throw new Error(data.error || 'Impossible de vérifier votre abonnement')
         if (data.accessAllowed) {
           redirectedToPayment.current = false
           setSubCheck(data.active ? 'active' : 'pending')
@@ -129,7 +138,7 @@ export function SellerApp({
       window.clearInterval(timer)
       if (redirectTimer !== undefined) window.clearTimeout(redirectTimer)
     }
-  }, [pharmacy?.id, onSubscriptionExpired])
+  }, [pharmacy?.id, onSubscriptionExpired, clearPharmacy, onExit])
 
   useEffect(() => {
     if (subCheck !== 'rejected') return
@@ -269,6 +278,15 @@ export function SellerApp({
         <div className="flex items-center justify-between">
           <PharmaKinWordmark size={32} />
           <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setNotificationsOpen((open) => !open)}
+            aria-expanded={notificationsOpen}
+            className="relative inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1.5 text-xs font-semibold hover:bg-accent"
+          >
+            <Bell size={15} /> Notifications
+            {notifications.length > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{notifications.length}</span>}
+          </button>
             <span className="hidden rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary sm:inline">
               {pharmacy.name}
             </span>
@@ -312,10 +330,12 @@ export function SellerApp({
             </button>
           </div>
         </div>
-        <NotificationList
-          notifications={notifications}
-          onDismiss={(id) => void dismissNotification(id)}
-        />
+        {notificationsOpen && (
+          <NotificationList
+            notifications={notifications}
+            onDismiss={(id) => void dismissNotification(id)}
+          />
+        )}
         {subCheck === 'pending' && (
           <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950" role="status">
             <strong>Validation du paiement en cours.</strong> PharmaKin reste accessible pendant la vérification de votre capture.
@@ -582,7 +602,9 @@ function NotificationList({
   notifications: SellerNotification[]
   onDismiss: (id: string) => void
 }) {
-  if (notifications.length === 0) return null
+  if (notifications.length === 0) {
+    return <p className="mt-2 rounded-xl border border-border bg-card px-3 py-3 text-sm text-muted-foreground">Aucune nouvelle notification.</p>
+  }
   return (
     <div className="space-y-2">
       {notifications.map((notification) => (

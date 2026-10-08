@@ -1,22 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getVendorSession } from '@/lib/vendor-auth'
 
 /**
  * GET /api/pharmacy/[id] -> get pharmacy with sellers
  * PUT /api/pharmacy/[id] -> update pharmacy (location, phone, address)
  */
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
+  const session = getVendorSession(req)
+  if (!session || session.pharmacyId !== id) return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
   const pharmacy = await db.pharmacy.findUnique({
     where: { id },
-    include: { sellers: { orderBy: { createdAt: 'asc' } } },
+    select: {
+      id: true, name: true, phone: true, address: true, latitude: true, longitude: true, currency: true,
+      createdAt: true, updatedAt: true,
+      sellers: { orderBy: { createdAt: 'asc' }, select: { id: true, pharmacyId: true, name: true, isPrimary: true } },
+    },
   })
   if (!pharmacy) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
+  const state = await db.pharmacy.findUnique({ where: { id }, select: { suspended: true } })
+  if (state?.suspended) return NextResponse.json({ error: 'Compte suspendu' }, { status: 403 })
   return NextResponse.json({ pharmacy })
 }
 
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
+  const session = getVendorSession(req)
+  if (!session || session.pharmacyId !== id) return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
   const body = await req.json()
   const { name, phone, address, latitude, longitude } = body as {
     name?: string

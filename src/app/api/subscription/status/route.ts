@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getVendorSession } from '@/lib/vendor-auth'
 
 /**
  * GET /api/subscription/status?pharmacyId=...
@@ -12,6 +13,14 @@ export async function GET(req: NextRequest) {
   const pharmacyId = searchParams.get('pharmacyId')
   if (!pharmacyId) {
     return NextResponse.json({ error: 'pharmacyId requis' }, { status: 400 })
+  }
+  const session = getVendorSession(req)
+  if (!session || session.pharmacyId !== pharmacyId) {
+    return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
+  }
+  const pharmacy = await db.pharmacy.findUnique({ where: { id: pharmacyId }, select: { suspended: true } })
+  if (!pharmacy || pharmacy.suspended) {
+    return NextResponse.json({ error: 'Compte pharmacie suspendu ou introuvable' }, { status: 403 })
   }
 
   const now = new Date()

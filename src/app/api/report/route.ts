@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getVendorSession } from '@/lib/vendor-auth'
 
 /**
  * GET /api/report?sessionId=...
@@ -7,6 +8,8 @@ import { db } from '@/lib/db'
  *   pharmacy, seller, session window, sales, movements, summary.
  */
 export async function GET(req: NextRequest) {
+  const vendor = getVendorSession(req)
+  if (!vendor) return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
   const { searchParams } = new URL(req.url)
   const sessionId = searchParams.get('sessionId')
   if (!sessionId) return NextResponse.json({ error: 'sessionId requis' }, { status: 400 })
@@ -16,6 +19,7 @@ export async function GET(req: NextRequest) {
     include: { pharmacy: true, seller: true },
   })
   if (!session) return NextResponse.json({ error: 'Session introuvable' }, { status: 404 })
+  if (session.pharmacyId !== vendor.pharmacyId) return NextResponse.json({ error: 'Session introuvable' }, { status: 404 })
 
   const end = session.endTime ?? new Date()
   const sales = await db.sale.findMany({

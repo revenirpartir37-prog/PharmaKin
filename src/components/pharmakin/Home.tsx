@@ -9,6 +9,7 @@ interface HomeProps {
   onSelectClient: () => void
   hasPharmacy: boolean
   onContinueSeller: () => void
+  onSellerLogin: () => void
 }
 
 export function Home({
@@ -16,6 +17,7 @@ export function Home({
   onSelectClient,
   hasPharmacy,
   onContinueSeller,
+  onSellerLogin,
 }: HomeProps) {
   return (
     <div className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-3xl flex-col items-center justify-center px-4 py-8">
@@ -93,6 +95,14 @@ export function Home({
           </div>
         </motion.button>
       </div>
+
+      <button
+        type="button"
+        onClick={onSellerLogin}
+        className="mt-4 rounded-lg px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/5"
+      >
+        Déjà un compte pharmacie ? Se connecter
+      </button>
 
       {/* Features strip */}
       <motion.div

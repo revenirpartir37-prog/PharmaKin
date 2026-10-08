@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { isAdminRequest } from '@/lib/admin-auth'
 import { SUBSCRIPTION_DURATION_DAYS } from '@/lib/subscription'
+import { hashPassword } from '@/lib/vendor-auth'
+import { randomBytes } from 'node:crypto'
 
 export async function GET(request: NextRequest) {
   if (!isAdminRequest(request)) {
@@ -28,7 +30,7 @@ export async function GET(request: NextRequest) {
       }),
       db.pharmacy.findMany({
         orderBy: { createdAt: 'desc' },
-        select: { id: true, name: true, phone: true, createdAt: true },
+        select: { id: true, name: true, email: true, phone: true, suspended: true, createdAt: true },
       }),
       db.subscription.findMany({
         where: { status: { in: ['active', 'pending_review', 'rejected', 'expired'] } },
@@ -83,7 +85,9 @@ export async function GET(request: NextRequest) {
       const daysRemaining = active?.endDate
         ? Math.max(0, Math.ceil((active.endDate.getTime() - now.getTime()) / 86_400_000))
         : 0
-      const subscriptionStatus = active
+      const subscriptionStatus = pharmacy.suspended
+        ? 'suspended'
+        : active
         ? 'active'
         : pending
           ? 'pending_review'
@@ -127,6 +131,73 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    if (['delete', 'suspend', 'unsuspend', 'cancel', 'renew', 'reset-password'].includes(body.action)) {
+      if (typeof body.pharmacyId !== 'string' || !body.pharmacyId) {
+        return NextResponse.json({ error: 'Pharmacie requise' }, { status: 400 })
+      }
+      const pharmacy = await db.pharmacy.findUnique({
+        where: { id: body.pharmacyId },
+        select: { id: true, suspended: true },
+      })
+      if (!pharmacy) return NextResponse.json({ error: 'Pharmacie introuvable' }, { status: 404 })
+
+      if (body.action === 'delete') {
+        await db.pharmacy.delete({ where: { id: pharmacy.id } })
+        return NextResponse.json({ deleted: true })
+      }
+      if (body.action === 'suspend' || body.action === 'unsuspend') {
+        const suspended = body.action === 'suspend'
+        await db.pharmacy.update({ where: { id: pharmacy.id }, data: { suspended } })
+        return NextResponse.json({ suspended })
+      }
+      if (body.action === 'cancel') {
+        await db.subscription.updateMany({
+          where: { pharmacyId: pharmacy.id, status: 'active' },
+          data: { status: 'cancelled', endDate: new Date() },
+        })
+        return NextResponse.json({ cancelled: true })
+      }
+      if (body.action === 'renew') {
+        const now = new Date()
+        const current = await db.subscription.findFirst({
+          where: { pharmacyId: pharmacy.id, status: 'active', endDate: { gt: now } },
+          orderBy: { endDate: 'desc' },
+        })
+        const startDate = current?.endDate ?? now
+        const endDate = new Date(startDate.getTime() + SUBSCRIPTION_DURATION_DAYS * 86_400_000)
+        const subscription = await db.subscription.create({
+          data: {
+            pharmacyId: pharmacy.id,
+            status: 'active',
+            amount: 0,
+            durationDays: SUBSCRIPTION_DURATION_DAYS,
+            startDate,
+            endDate,
+            paymentMethod: 'admin_grant',
+            note: 'Renouvellement manuel accordé par l’administration',
+          },
+        })
+        return NextResponse.json({ renewed: true, subscription })
+      }
+      const temporaryPassword = randomBytes(12).toString('base64url')
+      let emailUpdate: string | undefined
+      if (body.email !== undefined) {
+        if (typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+          return NextResponse.json({ error: 'Adresse e-mail invalide' }, { status: 400 })
+        }
+        emailUpdate = body.email.trim().toLowerCase()
+        const existingEmail = await db.pharmacy.findUnique({ where: { email: emailUpdate }, select: { id: true } })
+        if (existingEmail && existingEmail.id !== pharmacy.id) {
+          return NextResponse.json({ error: 'Cette adresse e-mail est déjà utilisée' }, { status: 409 })
+        }
+      }
+      await db.pharmacy.update({
+        where: { id: pharmacy.id },
+        data: { passwordHash: await hashPassword(temporaryPassword), ...(emailUpdate ? { email: emailUpdate } : {}) },
+      })
+      return NextResponse.json({ temporaryPassword })
+    }
+
     if (body.action === 'grant') {
       if (
         typeof body.sendToAll !== 'boolean' ||

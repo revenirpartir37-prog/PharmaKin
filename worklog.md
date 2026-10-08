@@ -3,6 +3,16 @@
 Project: PharmaKin (mobile-first pharmacy management app for Kinshasa/RDC).
 Stack: Next.js 16, TypeScript, Tailwind 4, shadcn/ui, Prisma (SQLite), Leaflet/OpenStreetMap, jsPDF.
 
+## Vendor accounts and administration
+
+- Pharmacy signup now requires a unique email and a password of at least 10 characters. Passwords are stored as salted scrypt hashes.
+- Added signed, HttpOnly, SameSite=Strict vendor sessions and a login screen that remains available from the home page.
+- Added email password reset using six-digit, ten-minute codes with attempt limits. Configure `RESEND_API_KEY` and `PHARMAKIN_EMAIL_FROM` to enable email delivery.
+- Added an explicit vendor notifications panel with unread count and dismiss-as-read behavior.
+- Admin pharmacy controls now support suspend/reactivate, cancel subscription, grant a seven-day renewal, one-time temporary password reset, and permanent deletion after confirmation.
+- Added Prisma migration `0002_vendor_auth` for pharmacy credentials/suspension and password-reset codes.
+- New Vercel variables: `PHARMAKIN_VENDOR_SESSION_SECRET`, `PHARMAKIN_PASSWORD_RESET_SECRET`, `RESEND_API_KEY`, and `PHARMAKIN_EMAIL_FROM`. Keep secrets out of source control.
+
 ---
 Task ID: 1
 Agent: main

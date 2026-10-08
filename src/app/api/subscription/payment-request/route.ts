@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getVendorSession } from '@/lib/vendor-auth'
 import {
   SUBSCRIPTION_CURRENCY,
   SUBSCRIPTION_DURATION_DAYS,
@@ -33,6 +34,10 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
+    const session = getVendorSession(request)
+    if (!session || session.pharmacyId !== pharmacyId) {
+      return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
+    }
     if (screenshot.size === 0 || screenshot.size > MAX_SCREENSHOT_BYTES) {
       return NextResponse.json({ error: 'La capture doit peser moins de 2 Mo' }, { status: 413 })
     }
@@ -47,9 +52,9 @@ export async function POST(request: NextRequest) {
 
     const pharmacy = await db.pharmacy.findUnique({
       where: { id: pharmacyId },
-      select: { id: true },
+      select: { id: true, suspended: true },
     })
-    if (!pharmacy) {
+    if (!pharmacy || pharmacy.suspended) {
       return NextResponse.json({ error: 'Pharmacie introuvable' }, { status: 404 })
     }
 

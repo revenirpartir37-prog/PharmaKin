@@ -5,13 +5,16 @@ import Image from 'next/image'
 import {
   Building2,
   Bell,
+  Ban,
   Check,
   Clock3,
   Gift,
   LogOut,
   Loader2,
+  KeyRound,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -31,10 +34,12 @@ interface AdminPharmacy {
   id: string
   name: string
   phone: string | null
+  email: string | null
+  suspended: boolean
   createdAt: string
   revenue: number
   approvedPayments: number
-  subscriptionStatus: 'active' | 'pending_review' | 'rejected' | 'expired' | 'unpaid'
+  subscriptionStatus: 'active' | 'pending_review' | 'rejected' | 'expired' | 'unpaid' | 'suspended'
   daysRemaining: number
   endDate: string | null
 }
@@ -75,6 +80,7 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
   const [notificationTitle, setNotificationTitle] = useState('')
   const [notificationMessage, setNotificationMessage] = useState('')
   const [sendingNotification, setSendingNotification] = useState(false)
+  const [pharmacyActionId, setPharmacyActionId] = useState<string | null>(null)
 
   const loadDashboard = useCallback(async (showErrors = true) => {
     setLoading(true)
@@ -202,6 +208,43 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
       toast.error(error instanceof Error ? error.message : 'Erreur lors de l’offre')
     } finally {
       setGranting(false)
+    }
+  }
+
+  async function managePharmacy(pharmacy: AdminPharmacy, action: 'delete' | 'suspend' | 'unsuspend' | 'cancel' | 'renew' | 'reset-password') {
+    const confirmation = action === 'delete'
+      ? `Supprimer définitivement ${pharmacy.name} et ses données (ventes, stock et historique) ? Cette action est irréversible.`
+      : action === 'cancel'
+        ? `Annuler l’abonnement actif de ${pharmacy.name} ?`
+        : action === 'suspend'
+          ? `Suspendre l’accès de ${pharmacy.name} ?`
+          : action === 'renew'
+            ? `Accorder un renouvellement gratuit de 7 jours à ${pharmacy.name} ?`
+            : null
+    if (confirmation && !window.confirm(confirmation)) return
+    const email = action === 'reset-password' && !pharmacy.email
+      ? window.prompt(`Cette pharmacie n’a pas encore d’e-mail de connexion. Saisissez l’e-mail du compte pour ${pharmacy.name} :`)?.trim()
+      : undefined
+    if (action === 'reset-password' && !pharmacy.email && !email) return
+    setPharmacyActionId(pharmacy.id)
+    try {
+      const response = await fetch('/api/admin/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, pharmacyId: pharmacy.id, ...(email ? { email } : {}) }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Action impossible')
+      if (action === 'reset-password') {
+        window.alert(`Mot de passe temporaire pour ${pharmacy.email || pharmacy.name} :\n\n${result.temporaryPassword}\n\nCommuniquez-le de manière privée. La pharmacie pourra ensuite utiliser « Mot de passe oublié » pour le changer.`)
+      } else {
+        toast.success(action === 'delete' ? 'Pharmacie supprimée' : action === 'renew' ? 'Abonnement renouvelé' : action === 'cancel' ? 'Abonnement annulé' : action === 'suspend' ? 'Pharmacie suspendue' : 'Pharmacie réactivée')
+      }
+      await loadDashboard()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Action impossible')
+    } finally {
+      setPharmacyActionId(null)
     }
   }
 
@@ -432,7 +475,7 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                   <article key={pharmacy.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
                     <div className="min-w-52">
                       <h3 className="font-bold">{pharmacy.name}</h3>
-                      <p className="text-xs text-muted-foreground">{pharmacy.phone || 'Téléphone non renseigné'}</p>
+                      <p className="text-xs text-muted-foreground">{pharmacy.email || 'E-mail non renseigné'} · {pharmacy.phone || 'Téléphone non renseigné'}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {pharmacy.approvedPayments} paiement(s) M-Pesa approuvé(s)
                         {pharmacy.endDate ? ` · Fin : ${new Date(pharmacy.endDate).toLocaleDateString('fr-FR')}` : ''}
@@ -447,6 +490,23 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                         <div className="font-extrabold text-emerald-800">{formatMoney(pharmacy.revenue)}</div>
                         <div className="text-[11px] text-muted-foreground">Revenu M-Pesa confirmé</div>
                       </div>
+                    </div>
+                    <div className="flex w-full flex-wrap gap-2 border-t border-border pt-3">
+                      <button disabled={pharmacyActionId !== null} onClick={() => void managePharmacy(pharmacy, pharmacy.suspended ? 'unsuspend' : 'suspend')} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-amber-300 px-3 text-xs font-bold text-amber-800 disabled:opacity-50">
+                        <Ban size={14} /> {pharmacy.suspended ? 'Réactiver' : 'Suspendre'}
+                      </button>
+                      <button disabled={pharmacyActionId !== null} onClick={() => void managePharmacy(pharmacy, 'cancel')} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold disabled:opacity-50">
+                        <X size={14} /> Annuler abonnement
+                      </button>
+                      <button disabled={pharmacyActionId !== null} onClick={() => void managePharmacy(pharmacy, 'renew')} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-emerald-300 px-3 text-xs font-bold text-emerald-800 disabled:opacity-50">
+                        <RefreshCw size={14} /> Renouveler 7 jours
+                      </button>
+                      <button disabled={pharmacyActionId !== null} onClick={() => void managePharmacy(pharmacy, 'reset-password')} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold disabled:opacity-50">
+                        <KeyRound size={14} /> Réinitialiser mot de passe
+                      </button>
+                      <button disabled={pharmacyActionId !== null} onClick={() => void managePharmacy(pharmacy, 'delete')} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-300 px-3 text-xs font-bold text-red-700 disabled:opacity-50">
+                        <Trash2 size={14} /> Supprimer
+                      </button>
                     </div>
                   </article>
                 ))}
@@ -550,6 +610,7 @@ function subscriptionStatusLabel(status: AdminPharmacy['subscriptionStatus']) {
     rejected: 'Paiement refusé',
     expired: 'Expiré',
     unpaid: 'Aucun paiement',
+    suspended: 'Pharmacie suspendue',
   }
   return labels[status]
 }
@@ -561,6 +622,7 @@ function subscriptionStatusStyle(status: AdminPharmacy['subscriptionStatus']) {
     rejected: 'bg-red-100 text-red-800',
     expired: 'bg-orange-100 text-orange-800',
     unpaid: 'bg-muted text-muted-foreground',
+    suspended: 'bg-red-200 text-red-900',
   }
   return styles[status]
 }

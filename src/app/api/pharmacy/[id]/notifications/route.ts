@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getVendorSession } from '@/lib/vendor-auth'
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params
+  const session = getVendorSession(request)
+  if (!session || session.pharmacyId !== id) return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
   const pharmacy = await db.pharmacy.findUnique({ where: { id }, select: { id: true } })
   if (!pharmacy) return NextResponse.json({ error: 'Pharmacie introuvable' }, { status: 404 })
 
@@ -23,6 +26,8 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params
+  const session = getVendorSession(request)
+  if (!session || session.pharmacyId !== id) return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
   try {
     const body = await request.json()
     if (typeof body.notificationId !== 'string' || !body.notificationId) {

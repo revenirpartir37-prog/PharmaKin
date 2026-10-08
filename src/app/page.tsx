@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Star } from 'lucide-react'
 import { Home } from '@/components/pharmakin/Home'
 import { SellerOnboarding } from '@/components/pharmakin/SellerOnboarding'
+import { SellerLogin } from '@/components/pharmakin/SellerLogin'
 import { SellerApp } from '@/components/pharmakin/SellerApp'
 import { ClientView } from '@/components/pharmakin/ClientView'
 import { PaywallView } from '@/components/pharmakin/PaywallView'
@@ -12,7 +13,7 @@ import { StickyFooter } from '@/components/pharmakin/StickyFooter'
 import { useAppStore } from '@/lib/store'
 import type { PharmacyDTO, SellerDTO } from '@/lib/types'
 
-type View = 'home' | 'onboarding' | 'paywall' | 'seller' | 'client' | 'admin'
+type View = 'home' | 'onboarding' | 'login' | 'paywall' | 'seller' | 'client' | 'admin'
 
 export default function Page() {
   const {
@@ -79,8 +80,35 @@ export default function Page() {
           <Home
             hasPharmacy={!!persistedPharmacy}
             onSelectSeller={() => setView('onboarding')}
-            onContinueSeller={goToSeller}
+            onContinueSeller={() => setView('login')}
+            onSellerLogin={() => setView('login')}
             onSelectClient={() => setView('client')}
+          />
+        )}
+
+        {view === 'login' && (
+          <SellerLogin
+            onBack={goHome}
+            onAuthenticated={(pharmacy: PharmacyDTO, sellers: SellerDTO[]) => {
+              setPharmacy(
+                {
+                  id: pharmacy.id,
+                  name: pharmacy.name,
+                  phone: pharmacy.phone,
+                  address: pharmacy.address,
+                  latitude: pharmacy.latitude,
+                  longitude: pharmacy.longitude,
+                  currency: pharmacy.currency ?? 'FC',
+                },
+                sellers.map((seller) => ({
+                  id: seller.id,
+                  pharmacyId: seller.pharmacyId,
+                  name: seller.name,
+                  isPrimary: seller.isPrimary,
+                })),
+              )
+              setView('seller')
+            }}
           />
         )}
 

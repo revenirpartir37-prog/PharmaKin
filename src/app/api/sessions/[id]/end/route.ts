@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getVendorSession } from '@/lib/vendor-auth'
 import { todayStr, timeStr } from '@/lib/format'
 
 /**
@@ -8,10 +9,13 @@ import { todayStr, timeStr } from '@/lib/format'
  * Returns the closed session + a service summary (sales, revenue, products,
  * entries, exits) for the session window.
  */
-export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
+  const vendor = getVendorSession(req)
+  if (!vendor) return NextResponse.json({ error: 'Connexion vendeur requise' }, { status: 401 })
   const session = await db.serviceSession.findUnique({ where: { id } })
   if (!session) return NextResponse.json({ error: 'Session introuvable' }, { status: 404 })
+  if (session.pharmacyId !== vendor.pharmacyId) return NextResponse.json({ error: 'Session introuvable' }, { status: 404 })
   if (!session.open) return NextResponse.json({ error: 'Session déjà terminée' }, { status: 400 })
 
   const now = new Date()
