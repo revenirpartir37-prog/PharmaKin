@@ -1,0 +1,165 @@
+// PharmaKin Prisma schema
+// Mobile-first pharmacy management for Kinshasa / RDC
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Pharmacy {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  address   String?
+  latitude  Float?
+  longitude Float?
+  currency  String   @default("FC") // FC or USD
+  invoiceSeq Int     @default(1) // for HK-XXXXXX numbering
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sellers  Seller[]
+  products Product[]
+  sales    Sale[]
+  movements StockMovement[]
+  activities Activity[]
+  sessions ServiceSession[]
+}
+
+model Seller {
+  id         String   @id @default(cuid())
+  pharmacyId String
+  name       String
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  pharmacy   Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  sales      Sale[]
+  movements  StockMovement[]
+  activities Activity[]
+  sessions   ServiceSession[]
+
+  @@index([pharmacyId])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  pharmacyId  String
+  name        String
+  category    String?
+  price       Float    // sale price in pharmacy currency
+  quantity    Int      // current stock
+  minThreshold Int?
+  expiryDate  String?  // MM/YYYY or ISO date
+  barcode     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pharmacy  Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  saleItems SaleItem[]
+  movements StockMovement[]
+
+  @@index([pharmacyId])
+  @@index([name])
+}
+
+model Sale {
+  id           String   @id @default(cuid())
+  pharmacyId   String
+  sellerId     String
+  invoiceNumber String  // HK-000001
+  clientName   String?
+  total        Float
+  itemCount    Int
+  createdAt    DateTime @default(now())
+  dateStr      String   // DD/MM/YYYY
+  timeStr      String   // HH:MM
+
+  pharmacy  Pharmacy  @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  seller    Seller    @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  items     SaleItem[]
+
+  @@index([pharmacyId])
+  @@index([sellerId])
+  @@index([invoiceNumber])
+}
+
+model SaleItem {
+  id        String @id @default(cuid())
+  saleId    String
+  productId String
+  name      String  // snapshot of product name
+  quantity  Int
+  unitPrice Float  // snapshot
+  lineTotal Float
+
+  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model StockMovement {
+  id          String   @id @default(cuid())
+  pharmacyId  String
+  productId   String
+  sellerId    String?
+  type        String   // ENTRY | EXIT | SALE | ADJUST
+  quantity    Int      // signed: +N entry, -N exit/sale
+  reason      String?  // damaged / loss / return / other
+  oldQuantity Int
+  newQuantity Int
+  createdAt   DateTime @default(now())
+  dateStr     String
+  timeStr     String
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  seller   Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+
+  @@index([pharmacyId])
+  @@index([productId])
+  @@index([sellerId])
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  pharmacyId  String
+  sellerId    String
+  type        String   // SERVICE_START | SERVICE_END | SALE | STOCK_ENTRY | STOCK_EXIT | PRODUCT_ADD
+  description String
+  refId       String?  // optional ref to sale/movement/product
+  createdAt   DateTime @default(now())
+  dateStr     String
+  timeStr     String
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  seller   Seller  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@index([sellerId])
+  @@index([createdAt])
+}
+
+model ServiceSession {
+  id          String   @id @default(cuid())
+  pharmacyId  String
+  sellerId    String
+  startTime   DateTime
+  endTime     DateTime?
+  startStr    String
+  endStr      String?
+  open        Boolean  @default(true)
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  seller   Seller  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId])
+  @@index([sellerId])
+  @@index([open])
+}
