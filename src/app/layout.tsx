@@ -26,9 +26,9 @@ export const metadata: Metadata = {
   authors: [{ name: "HenoBuild Entreprise" }],
   applicationName: "PharmaKin",
   icons: {
-    icon: "/favicon.ico",
+    icon: "/pharmakin-icon.svg",
   },
-  manifest: undefined,
+  manifest: "/manifest.webmanifest",
 };
 
 export const viewport: Viewport = {
@@ -37,6 +37,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   themeColor: "#1f6b53",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -152,6 +152,18 @@ export function SellerApp({
     }
   }, [subCheck, onSubscriptionExpired])
 
+  async function leaveSellerSpace() {
+    try {
+      const response = await fetch('/api/auth/vendor/session', { method: 'DELETE' })
+      if (!response.ok) throw new Error('Déconnexion impossible')
+    } catch {
+      if (navigator.onLine) toast.error('La session serveur n’a pas pu être fermée. Réessayez lorsque la connexion sera rétablie.')
+    } finally {
+      clearPharmacy()
+      onExit()
+    }
+  }
+
   async function dismissNotification(notificationId: string) {
     if (!pharmacy) return
     try {
@@ -241,7 +253,7 @@ export function SellerApp({
             toast.error('Erreur au démarrage du service')
           }
         }}
-        onExit={onExit}
+        onExit={() => void leaveSellerSpace()}
       />
     )
   }
@@ -319,8 +331,7 @@ export function SellerApp({
             <button
               onClick={() => {
                 if (confirm('Quitter lespace vendeur ?')) {
-                  clearPharmacy()
-                  onExit()
+                  void leaveSellerSpace()
                 }
               }}
               className="inline-flex items-center justify-center rounded-full border border-border bg-card p-1.5 text-muted-foreground hover:bg-accent"

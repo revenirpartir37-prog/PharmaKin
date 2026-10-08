@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "PharmaKin — Gestion de pharmacie",
+  "short_name": "PharmaKin",
+  "description": "Gestion mobile des ventes, stocks et activités d’une pharmacie.",
+  "lang": "fr-CD",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8faf9",
+  "theme_color": "#1f6b53",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pharmakin-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

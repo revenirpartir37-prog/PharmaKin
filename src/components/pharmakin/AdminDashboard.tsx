@@ -8,6 +8,7 @@ import {
   Ban,
   Check,
   Clock3,
+  Copy,
   Gift,
   LogOut,
   Loader2,
@@ -81,6 +82,8 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
   const [notificationMessage, setNotificationMessage] = useState('')
   const [sendingNotification, setSendingNotification] = useState(false)
   const [pharmacyActionId, setPharmacyActionId] = useState<string | null>(null)
+  const [temporaryCredential, setTemporaryCredential] = useState<{ email: string; password: string } | null>(null)
+  const [credentialCopied, setCredentialCopied] = useState(false)
 
   const loadDashboard = useCallback(async (showErrors = true) => {
     setLoading(true)
@@ -236,7 +239,8 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Action impossible')
       if (action === 'reset-password') {
-        window.alert(`Mot de passe temporaire pour ${pharmacy.email || pharmacy.name} :\n\n${result.temporaryPassword}\n\nCommuniquez-le de manière privée. La pharmacie pourra ensuite utiliser « Mot de passe oublié » pour le changer.`)
+        setTemporaryCredential({ email: result.email || pharmacy.email || email || '', password: result.temporaryPassword })
+        setCredentialCopied(false)
       } else {
         toast.success(action === 'delete' ? 'Pharmacie supprimée' : action === 'renew' ? 'Abonnement renouvelé' : action === 'cancel' ? 'Abonnement annulé' : action === 'suspend' ? 'Pharmacie suspendue' : 'Pharmacie réactivée')
       }
@@ -336,6 +340,37 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6">
+      {temporaryCredential && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="temporary-password-title">
+          <section className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl">
+            <h2 id="temporary-password-title" className="text-xl font-extrabold">Mot de passe temporaire</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Transmettez ces informations manuellement à la pharmacie, de préférence à l’adresse enregistrée.
+            </p>
+            <label className="mt-4 block text-xs font-semibold text-muted-foreground">E-MAIL DU COMPTE</label>
+            <p className="mt-1 break-all rounded-lg bg-muted p-3 text-sm font-semibold">{temporaryCredential.email || 'E-mail non renseigné'}</p>
+            <label className="mt-4 block text-xs font-semibold text-muted-foreground">MOT DE PASSE À COMMUNIQUER</label>
+            <input readOnly value={temporaryCredential.password} className="mt-1 w-full rounded-lg border border-input bg-background p-3 font-mono text-sm" onFocus={(event) => event.currentTarget.select()} />
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(`E-mail: ${temporaryCredential.email}\nMot de passe temporaire: ${temporaryCredential.password}`)
+                    .then(() => setCredentialCopied(true))
+                    .catch(() => toast.error('Copie impossible. Sélectionnez le mot de passe pour le copier manuellement.'))
+                }}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+              >
+                <Copy size={16} /> {credentialCopied ? 'Copié' : 'Copier les informations'}
+              </button>
+              <button type="button" onClick={() => setTemporaryCredential(null)} className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold">
+                Fermer
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-amber-800">Demandez à la pharmacie de modifier ce mot de passe après sa connexion.</p>
+          </section>
+        </div>
+      )}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wider text-primary">Administration PharmaKin</p>

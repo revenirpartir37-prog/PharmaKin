@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       }
       const pharmacy = await db.pharmacy.findUnique({
         where: { id: body.pharmacyId },
-        select: { id: true, suspended: true },
+        select: { id: true, email: true, suspended: true },
       })
       if (!pharmacy) return NextResponse.json({ error: 'Pharmacie introuvable' }, { status: 404 })
 
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
         where: { id: pharmacy.id },
         data: { passwordHash: await hashPassword(temporaryPassword), ...(emailUpdate ? { email: emailUpdate } : {}) },
       })
-      return NextResponse.json({ temporaryPassword })
+      return NextResponse.json({ temporaryPassword, email: emailUpdate ?? pharmacy.email })
     }
 
     if (body.action === 'grant') {

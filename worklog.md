@@ -7,11 +7,14 @@ Stack: Next.js 16, TypeScript, Tailwind 4, shadcn/ui, Prisma (SQLite), Leaflet/O
 
 - Pharmacy signup now requires a unique email and a password of at least 10 characters. Passwords are stored as salted scrypt hashes.
 - Added signed, HttpOnly, SameSite=Strict vendor sessions and a login screen that remains available from the home page.
-- Added email password reset using six-digit, ten-minute codes with attempt limits. Configure `RESEND_API_KEY` and `PHARMAKIN_EMAIL_FROM` to enable email delivery.
+- Forgot-password requests direct the pharmacy to the administrator. Admins generate a temporary password and copy it for manual delivery to the account email; no email service configuration is required.
 - Added an explicit vendor notifications panel with unread count and dismiss-as-read behavior.
 - Admin pharmacy controls now support suspend/reactivate, cancel subscription, grant a seven-day renewal, one-time temporary password reset, and permanent deletion after confirmation.
 - Added Prisma migration `0002_vendor_auth` for pharmacy credentials/suspension and password-reset codes.
-- New Vercel variables: `PHARMAKIN_VENDOR_SESSION_SECRET`, `PHARMAKIN_PASSWORD_RESET_SECRET`, `RESEND_API_KEY`, and `PHARMAKIN_EMAIL_FROM`. Keep secrets out of source control.
+- New Vercel variable: `PHARMAKIN_VENDOR_SESSION_SECRET`. Keep secrets out of source control.
+- Vendor workspace is restored after reload through persisted pharmacy/seller state and a signed HttpOnly session.
+- Added a mobile-installable PWA shell with offline app-shell caching, API GET cache in IndexedDB, and an IndexedDB outbox for offline sales, product edits, stock changes, and service sessions. Pending operations sync in order when online; newly created offline product/session IDs are remapped during replay.
+- The offline mode requires the pharmacy to sign in and load its app data online at least once. Subscription review, payment receipt upload, account login/reset, and administration still require connectivity.
 
 ---
 Task ID: 1

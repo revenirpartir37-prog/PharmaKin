@@ -10,12 +10,15 @@ import { ClientView } from '@/components/pharmakin/ClientView'
 import { PaywallView } from '@/components/pharmakin/PaywallView'
 import { AdminDashboard } from '@/components/pharmakin/AdminDashboard'
 import { StickyFooter } from '@/components/pharmakin/StickyFooter'
+import { OfflineStatus } from '@/components/pharmakin/OfflineStatus'
 import { useAppStore } from '@/lib/store'
+import { installOfflineFetch } from '@/lib/offline'
 import type { PharmacyDTO, SellerDTO } from '@/lib/types'
 
 type View = 'home' | 'onboarding' | 'login' | 'paywall' | 'seller' | 'client' | 'admin'
 
 export default function Page() {
+  installOfflineFetch()
   const {
     pharmacy: persistedPharmacy,
     sellers: persistedSellers,
@@ -29,9 +32,15 @@ export default function Page() {
 
   // Wait for zustand persist to rehydrate (avoids SSR/CSR mismatch)
   useEffect(() => {
-    const unsub = useAppStore.persist.onFinishHydration(() => setHydrated(true))
+    const finishHydration = () => {
+      if (useAppStore.getState().pharmacy) setView('seller')
+      setHydrated(true)
+    }
+    const unsub = useAppStore.persist.onFinishHydration(finishHydration)
     Promise.resolve().then(() => {
-      if (useAppStore.persist.hasHydrated()) setHydrated(true)
+      if (useAppStore.persist.hasHydrated()) {
+        finishHydration()
+      }
     })
     return () => {
       unsub()
@@ -75,6 +84,7 @@ export default function Page() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <OfflineStatus />
       <main className="flex-1">
         {view === 'home' && (
           <Home
